@@ -9,6 +9,7 @@ import {
     FormLabel,
     Input,
     Stack,
+    Typography,
     useTheme
 } from "@mui/joy";
 import { Buffer } from "buffer";
@@ -36,9 +37,10 @@ export default function App() {
 
     function pickWord() {
         const candidates = words.filter(w => w.length === wordLength);
-        const word = _.sample(candidates);
+        const word = _.sample(candidates/* .splice(0, 100) */);
         if (!word) throw new Error("No word found");
         setWord(word);
+        console.log(word);
     }
 
     if (loading) return <CircularProgress determinate={false} />
@@ -61,16 +63,22 @@ export default function App() {
                     />
                 </FormControl>
                 <Button variant="solid" onClick={pickWord}>Start</Button>
-                {Boolean(word) && <WordGuesser word={word} maxGuesses={5} />}
+                {Boolean(word) && <WordGuesser word={word} maxGuesses={5} isValidWord={word => words.some(x => word.toLowerCase() === x.toLowerCase())} />}
             </Stack>
         </Box>
     );
 }
 
-function WordGuesser({ word, maxGuesses }: { word: string, maxGuesses: number }) {
-    const [guesses, setGuesses] = useState<string[]>(new Array(maxGuesses).fill(" ".repeat(word.length)));
+function WordGuesser({ word, maxGuesses, isValidWord }: { word: string, maxGuesses: number, isValidWord: (word: string) => boolean }) {
+    const [guesses, setGuesses] = useState<string[]>(new Array(maxGuesses).fill(""));
+    const [currentRow, setCurrentRow] = useState(0);
     const theme = useTheme();
     const inputRefs = useRef<HTMLInputElement[][]>([]);
+
+    useEffect(() => {
+        setGuesses(new Array(maxGuesses).fill(""));
+        setCurrentRow(0);
+    }, [word, maxGuesses]);
 
     const refCallback = useCallback((input: HTMLInputElement) => {
         if (!input) return;
@@ -83,27 +91,66 @@ function WordGuesser({ word, maxGuesses }: { word: string, maxGuesses: number })
         lastRow.push(input);
     }, [word.length]);
 
-    function onChange(event: React.KeyboardEvent<HTMLDivElement>, row: number, column: number) {
-        const newGuesses = [...guesses];
-        newGuesses[row] = newGuesses[row].substring(0, column) + event.key.toUpperCase() + newGuesses[row].substring(column + 1);
-        setGuesses(newGuesses);
+    function isWin(row?: number) {
+        return guesses.slice(0, row ?? currentRow).some(guess => guess.toLowerCase() === word.toLowerCase());
+    }
 
-        if (column < word.length - 1) {
-            inputRefs.current[row][column + 1].focus();
-        } else if (row < maxGuesses - 1) {
-            inputRefs.current[row + 1][0].focus();
+    function onChange(event: React.KeyboardEvent<HTMLDivElement>, row: number, column: number) {
+        if (/^[a-z]$/i.test(event.key)) {
+            const newGuesses = [...guesses];
+            newGuesses[row] = newGuesses[row].substring(0, column) + event.key.toUpperCase() + newGuesses[row].substring(column + 1);
+            setGuesses(newGuesses);
+
+            changeFocus(row, column, "forward");
+        } else if (event.key === "Backspace") {
+            const newGuesses = [...guesses];
+            const previousGuessLength = newGuesses[row].length;
+            newGuesses[row] = newGuesses[row].substring(0, column - (previousGuessLength === word.length ? 0 : 1));
+            setGuesses(newGuesses);
+
+            if (column !== word.length - 1 || previousGuessLength < word.length) {
+                changeFocus(row, column, "backward");
+            }
+        } else if (event.key === "Enter") {
+            submitGuess();
         }
     }
+
+    function changeFocus(row: number, column: number, direction: "forward" | "backward" | "explicit") {
+        if (direction === "forward") {
+            if (column < word.length - 1) {
+                inputRefs.current[row][column + 1].focus();
+            }
+        } else if (direction === "backward") {
+            if (column > 0) {
+                inputRefs.current[row][column - 1].focus();
+            }
+        } else if (direction === "explicit") {
+            if (isWin(row)) return;
+            if (row < maxGuesses && column < word.length) {
+                inputRefs.current[row][column].disabled = false;
+                inputRefs.current[row][column].focus();
+            }
+        }
+    }
+
+    function submitGuess() {
+        if (guesses[currentRow].length === word.length && isValidWord(guesses[currentRow])) {
+            setCurrentRow(currentRow + 1);
+            changeFocus(currentRow + 1, 0, "explicit");
+        }
+    }
+
 
     return (
         <Stack direction="column" spacing={4}>
             {guesses.map((guess, row) => (
                 <Stack key={row} direction="row" spacing={2}>
-                    {Array.from(guess).map((letter, column) => (
-                        <div
-                            contentEditable="plaintext-only"
+                    {Array.from(withLength(guess, word.length)).map((letter, column) => (
+                        <input
                             ref={refCallback}
                             key={column}
+                            value={letter}
                             style={{
                                 width: "80px",
                                 height: "80px",
@@ -113,15 +160,36 @@ function WordGuesser({ word, maxGuesses }: { word: string, maxGuesses: number })
                                 border: "none",
                                 fontSize: "60px",
                                 textAlign: "center",
-                                backgroundColor: theme.palette.background.surface
+                                backgroundColor: row >= currentRow ? theme.palette.background.surface : word[column] === letter.toLowerCase() ? theme.palette.success[500] : word.includes(letter.toLowerCase()) ? theme.palette.warning[500] : theme.palette.background.surface,
                             }}
                             onKeyDown={e => onChange(e, row, column)}
-                        >
-                            {letter}
-                        </div>
+                            disabled={row !== currentRow || isWin()}
+                        />
                     ))}
+                    {row === currentRow && !isWin() &&
+                        <Button disabled={guess.length !== word.length || !isValidWord(guess)} onClick={submitGuess} variant="solid">Submit</Button>
+                    }
                 </Stack>
             ))}
+            {currentRow >= maxGuesses && !isWin() &&
+                <Typography fontSize="30px" variant="plain" color="danger">You lost! The word was {word}.</Typography>
+            }
+            {isWin() &&
+                <Typography fontSize="30px" variant="plain" color="success">You won!</Typography>
+            }
         </Stack>
     );
+}
+
+function* withLength(str: string, length: number) {
+    let i = 0;
+    while (i < length && i < str.length) {
+        yield str[i];
+        i++;
+    }
+
+    while (i < length) {
+        yield "";
+        i++;
+    }
 }
