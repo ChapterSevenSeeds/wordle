@@ -146,21 +146,22 @@ function WordGuesser({ word, maxGuesses, isValidWord }: { word: string, maxGuess
         if (row >= currentRow) return new Array(word.length).fill("").map((_, i) => ({ letter: guess[i] ?? "", color: theme.palette.background.surface, index: i }));
 
         const fullGuess = Array.from(withLength(guess, word.length));
+        const wordArray = Array.from(word);
         const guessLetterIndexToWordLetterIndexMapping = new Bimap<number, number>();
         for (const [guessIndex, mapsToWordIndex] of fullGuess.map((_, i) => [i, -1])) {
             guessLetterIndexToWordLetterIndexMapping.set(guessIndex, mapsToWordIndex);
         }
 
         // See if the guess has any correct letters in the correct position
-        for (let i = 0; i < word.length; i++) {
-            if (guess[i]?.toLowerCase() === word[i].toLowerCase()) {
+        for (let i = 0; i < wordArray.length; i++) {
+            if (guess[i]?.toLowerCase() === wordArray[i].toLowerCase()) {
                 guessLetterIndexToWordLetterIndexMapping.set(i, i);
             }
         }
 
         // See if the guess has any correct letters in the wrong position (but not already mapped to another letter in the word)
         for (let i = 0; i < fullGuess.length; i++) {
-            const index = Array.from(word).findIndex((letter, wordLetterIndex) => letter === guess[i]?.toLowerCase() && (guessLetterIndexToWordLetterIndexMapping.getByValue(wordLetterIndex) === undefined || guessLetterIndexToWordLetterIndexMapping.getByValue(wordLetterIndex) === -1));
+            const index = wordArray.findIndex((letter, wordLetterIndex) => letter === guess[i]?.toLowerCase() && (guessLetterIndexToWordLetterIndexMapping.getByValue(wordLetterIndex) === undefined || guessLetterIndexToWordLetterIndexMapping.getByValue(wordLetterIndex) === -1));
             if (index !== -1) {
                 guessLetterIndexToWordLetterIndexMapping.set(i, index);
             }
