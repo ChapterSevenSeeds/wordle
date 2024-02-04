@@ -1,5 +1,6 @@
 import _ from "lodash";
 import axios from "axios";
+import Bimap from "./bimap";
 import LZUTF8 from "lzutf8";
 import {
     Box,
@@ -37,7 +38,7 @@ export default function App() {
 
     function pickWord() {
         const candidates = words.filter(w => w.length === wordLength);
-        const word = _.sample(candidates/* .splice(0, 100) */);
+        const word = _.sample(candidates.splice(0, 5));
         if (!word) throw new Error("No word found");
         setWord(word);
         console.log(word);
@@ -141,12 +142,46 @@ function WordGuesser({ word, maxGuesses, isValidWord }: { word: string, maxGuess
         }
     }
 
+    function getRowData(word: string, guess: string, row: number) {
+        if (row >= currentRow) return new Array(word.length).fill("").map((_, i) => ({ letter: guess[i] ?? "", color: theme.palette.background.surface, index: i }));
+
+        const fullGuess = Array.from(withLength(guess, word.length));
+        const guessLetterIndexToWordLetterIndexMapping = new Bimap<number, number>();
+        for (const [guessIndex, mapsToWordIndex] of fullGuess.map((_, i) => [i, -1])) {
+            guessLetterIndexToWordLetterIndexMapping.set(guessIndex, mapsToWordIndex);
+        }
+
+        // See if the guess has any correct letters in the correct position
+        for (let i = 0; i < word.length; i++) {
+            if (guess[i]?.toLowerCase() === word[i].toLowerCase()) {
+                guessLetterIndexToWordLetterIndexMapping.set(i, i);
+            }
+        }
+
+        // See if the guess has any correct letters in the wrong position (but not already mapped to another letter in the word)
+        for (let i = 0; i < fullGuess.length; i++) {
+            const index = Array.from(word).findIndex((letter, wordLetterIndex) => letter === guess[i]?.toLowerCase() && (guessLetterIndexToWordLetterIndexMapping.getByValue(wordLetterIndex) === undefined || guessLetterIndexToWordLetterIndexMapping.getByValue(wordLetterIndex) === -1));
+            if (index !== -1) {
+                guessLetterIndexToWordLetterIndexMapping.set(i, index);
+            }
+        }
+
+        return _.orderBy(Array.from(guessLetterIndexToWordLetterIndexMapping), x => x[0]).map(([guessIndex, wordIndex]) => {
+            if (wordIndex === -1) {
+                return { letter: guess[guessIndex], color: theme.palette.background.surface, index: guessIndex };
+            }
+
+            if (wordIndex === guessIndex) return { letter: guess[guessIndex], color: theme.palette.success[500], index: guessIndex };
+
+            return { letter: guess[guessIndex], color: theme.palette.warning[500], index: guessIndex };
+        });
+    }
 
     return (
         <Stack direction="column" spacing={4}>
             {guesses.map((guess, row) => (
                 <Stack key={row} direction="row" spacing={2}>
-                    {Array.from(withLength(guess, word.length)).map((letter, column) => (
+                    {Array.from(getRowData(word, guess, row)).map(({ letter, color }, column) => (
                         <input
                             ref={refCallback}
                             key={column}
@@ -160,7 +195,7 @@ function WordGuesser({ word, maxGuesses, isValidWord }: { word: string, maxGuess
                                 border: "none",
                                 fontSize: "60px",
                                 textAlign: "center",
-                                backgroundColor: row >= currentRow ? theme.palette.background.surface : word[column] === letter.toLowerCase() ? theme.palette.success[500] : word.includes(letter.toLowerCase()) ? theme.palette.warning[500] : theme.palette.background.surface,
+                                backgroundColor: color,
                             }}
                             onKeyDown={e => onChange(e, row, column)}
                             disabled={row !== currentRow || isWin()}
