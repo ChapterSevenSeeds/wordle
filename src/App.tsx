@@ -6,6 +6,7 @@ import {
     Box,
     Button,
     CircularProgress,
+    colors,
     FormControl,
     FormLabel,
     Input,
@@ -14,13 +15,25 @@ import {
     useTheme
 } from "@mui/joy";
 import { Buffer } from "buffer";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState
+} from "react";
+
+const textToInputRatio = 0.75;
+const sampleSize = 10;
 
 export default function App() {
     const [loading, setLoading] = useState(true);
     const [words, setWords] = useState<string[]>([]);
     const [wordLength, setWordLength] = useState(5);
     const [word, setWord] = useState("");
+    const [inputWidth, setInputWidth] = useState(0);
+    const [level, setLevel] = useState(1);
+    const usedWordsRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
         async function load() {
@@ -36,45 +49,70 @@ export default function App() {
         load();
     }, []);
 
+    useEffect(() => {
+        function handleResize() {
+            setInputWidth(Math.min(80, Math.floor((window.innerWidth - wordLength * 8 * 2) / (wordLength))));
+        }
+
+        window.addEventListener("resize", handleResize);
+        handleResize();
+        return () => window.removeEventListener("resize", handleResize);
+    }, [wordLength]);
+
     function pickWord() {
-        const candidates = words.filter(w => w.length === wordLength);
-        const word = _.sample(candidates.splice(0, 5));
+        const candidates = words.filter(w => w.length === wordLength && !usedWordsRef.current.has(w));
+        const word = _.sample(candidates.splice(0, level + sampleSize));
         if (!word) throw new Error("No word found");
         setWord(word);
         console.log(word);
     }
 
+    function nextLevel() {
+        usedWordsRef.current.add(word);
+        setLevel(level + 1);
+        pickWord();
+    }
+
     if (loading) return <CircularProgress determinate={false} />
     return (
-        <Box sx={{ mx: "auto", marginTop: 12 }}>
+        <Box sx={{ mx: "auto", marginTop: 2 }}>
             <Stack direction="column" spacing={4} justifyContent="center" alignItems="center">
-                <FormControl>
-                    <FormLabel>Word Length</FormLabel>
-                    <Input
-                        type="number"
-                        slotProps={{
-                            input: {
-                                min: 1,
-                                max: 30,
-                                step: 1
-                            }
-                        }}
-                        value={wordLength}
-                        onChange={e => setWordLength(parseInt(e.target.value))}
-                    />
-                </FormControl>
-                <Button variant="solid" onClick={pickWord}>Start</Button>
-                {Boolean(word) && <WordGuesser word={word} maxGuesses={5} isValidWord={word => words.some(x => word.toLowerCase() === x.toLowerCase())} />}
+                {!Boolean(word) &&
+                    <>
+                        <FormControl>
+                            <FormLabel>Word Length</FormLabel>
+                            <Input
+                                type="number"
+                                slotProps={{
+                                    input: {
+                                        min: 1,
+                                        max: 30,
+                                        step: 1
+                                    }
+                                }}
+                                value={wordLength}
+                                onChange={e => setWordLength(parseInt(e.target.value))}
+                            />
+                        </FormControl>
+                        <Button variant="solid" onClick={pickWord}>Start</Button>
+                    </>
+                }
+                {Boolean(word) && <WordGuesser key={level} inputSize={inputWidth} word={word} maxGuesses={5} isValidWord={word => words.some(x => word.toLowerCase() === x.toLowerCase())} onNextLevel={nextLevel} />}
             </Stack>
         </Box>
     );
 }
 
-function WordGuesser({ word, maxGuesses, isValidWord }: { word: string, maxGuesses: number, isValidWord: (word: string) => boolean }) {
+function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: { word: string, maxGuesses: number, isValidWord: (word: string) => boolean, inputSize: number, onNextLevel: () => void }) {
     const [guesses, setGuesses] = useState<string[]>(new Array(maxGuesses).fill(""));
     const [currentRow, setCurrentRow] = useState(0);
     const theme = useTheme();
     const inputRefs = useRef<HTMLInputElement[][]>([]);
+    const gameStatus = useMemo(() => {
+        if (guesses.slice(0, currentRow).some(guess => guess.toLowerCase() === word.toLowerCase())) return "win";
+        if (currentRow >= maxGuesses) return "loss";
+        return "playing";
+    }, [word, guesses, currentRow, maxGuesses]);
 
     useEffect(() => {
         setGuesses(new Array(maxGuesses).fill(""));
@@ -91,10 +129,6 @@ function WordGuesser({ word, maxGuesses, isValidWord }: { word: string, maxGuess
 
         lastRow.push(input);
     }, [word.length]);
-
-    function isWin(row?: number) {
-        return guesses.slice(0, row ?? currentRow).some(guess => guess.toLowerCase() === word.toLowerCase());
-    }
 
     function onChange(event: React.KeyboardEvent<HTMLDivElement>, row: number, column: number) {
         if (/^[a-z]$/i.test(event.key)) {
@@ -127,7 +161,6 @@ function WordGuesser({ word, maxGuesses, isValidWord }: { word: string, maxGuess
                 inputRefs.current[row][column - 1].focus();
             }
         } else if (direction === "explicit") {
-            if (isWin(row)) return;
             if (row < maxGuesses && column < word.length) {
                 inputRefs.current[row][column].disabled = false;
                 inputRefs.current[row][column].focus();
@@ -143,7 +176,7 @@ function WordGuesser({ word, maxGuesses, isValidWord }: { word: string, maxGuess
     }
 
     function getRowData(word: string, guess: string, row: number) {
-        if (row >= currentRow) return new Array(word.length).fill("").map((_, i) => ({ letter: guess[i] ?? "", color: theme.palette.background.surface, index: i }));
+        if (row >= currentRow) return new Array(word.length).fill("").map((_, i) => ({ letter: guess[i] ?? "", color: row === currentRow && guess.length === word.length && isValidWord(guess) ? colors.grey[500] : colors.grey[700], index: i }));
 
         const fullGuess = Array.from(withLength(guess, word.length));
         const wordArray = Array.from(word);
@@ -161,6 +194,7 @@ function WordGuesser({ word, maxGuesses, isValidWord }: { word: string, maxGuess
 
         // See if the guess has any correct letters in the wrong position (but not already mapped to another letter in the word)
         for (let i = 0; i < fullGuess.length; i++) {
+            if (guessLetterIndexToWordLetterIndexMapping.getByKey(i) !== undefined && guessLetterIndexToWordLetterIndexMapping.getByKey(i) !== -1) continue;
             const index = wordArray.findIndex((letter, wordLetterIndex) => letter === guess[i]?.toLowerCase() && (guessLetterIndexToWordLetterIndexMapping.getByValue(wordLetterIndex) === undefined || guessLetterIndexToWordLetterIndexMapping.getByValue(wordLetterIndex) === -1));
             if (index !== -1) {
                 guessLetterIndexToWordLetterIndexMapping.set(i, index);
@@ -169,7 +203,7 @@ function WordGuesser({ word, maxGuesses, isValidWord }: { word: string, maxGuess
 
         return _.orderBy(Array.from(guessLetterIndexToWordLetterIndexMapping), x => x[0]).map(([guessIndex, wordIndex]) => {
             if (wordIndex === -1) {
-                return { letter: guess[guessIndex], color: theme.palette.background.surface, index: guessIndex };
+                return { letter: guess[guessIndex], color: colors.grey[600], index: guessIndex };
             }
 
             if (wordIndex === guessIndex) return { letter: guess[guessIndex], color: theme.palette.success[500], index: guessIndex };
@@ -179,40 +213,44 @@ function WordGuesser({ word, maxGuesses, isValidWord }: { word: string, maxGuess
     }
 
     return (
-        <Stack direction="column" spacing={4}>
+        <Stack direction="column" spacing={1}>
             {guesses.map((guess, row) => (
-                <Stack key={row} direction="row" spacing={2}>
-                    {Array.from(getRowData(word, guess, row)).map(({ letter, color }, column) => (
-                        <input
-                            ref={refCallback}
-                            key={column}
-                            value={letter}
-                            style={{
-                                width: "80px",
-                                height: "80px",
-                                padding: 0,
-                                borderRadius: theme.radius.md,
-                                outline: "none",
-                                border: "none",
-                                fontSize: "60px",
-                                textAlign: "center",
-                                backgroundColor: color,
-                            }}
-                            onKeyDown={e => onChange(e, row, column)}
-                            disabled={row !== currentRow || isWin()}
-                        />
-                    ))}
-                    {row === currentRow && !isWin() &&
-                        <Button disabled={guess.length !== word.length || !isValidWord(guess)} onClick={submitGuess} variant="solid">Submit</Button>
-                    }
+                <Stack key={row} direction="row" spacing={1}>
+                    {Array.from(getRowData(word, guess, row)).map(({ letter, color }, column) => {
+                        const readonly = row > currentRow || gameStatus !== "playing";
+                        return (
+                            <input
+                                ref={refCallback}
+                                key={column}
+                                value={letter}
+                                className="letter"
+                                style={{
+                                    width: `${inputSize}px`,
+                                    height: `${inputSize}px`,
+                                    padding: 0,
+                                    borderRadius: theme.radius.md,
+                                    outline: "none",
+                                    border: "none",
+                                    fontSize: `${inputSize * textToInputRatio}px`,
+                                    textAlign: "center",
+                                    backgroundColor: color,
+                                    filter: row > currentRow || (gameStatus !== "playing" && row > currentRow - 1) ? "opacity(0)" : "opacity(1)",
+                                    display: gameStatus !== "playing" && row > currentRow - 1 ? "none" : "block"
+                                }}
+                                onKeyDown={e => onChange(e, row, column)}
+                                disabled={readonly}
+                            />
+                        );
+                    })}
                 </Stack>
             ))}
-            {currentRow >= maxGuesses && !isWin() &&
-                <Typography fontSize="30px" variant="plain" color="danger">You lost! The word was {word}.</Typography>
+            {gameStatus === "loss" &&
+                <Typography fontSize="20px" variant="plain" color="danger">You lost! The word was {word}.</Typography>
             }
-            {isWin() &&
-                <Typography fontSize="30px" variant="plain" color="success">You won!</Typography>
+            {gameStatus === "win" &&
+                <Typography fontSize="20px" variant="plain" color="success">You won!</Typography>
             }
+            {gameStatus !== "playing" && <Button onClick={onNextLevel}>Next Level</Button>}
         </Stack>
     );
 }

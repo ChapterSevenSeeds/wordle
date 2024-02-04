@@ -24,7 +24,8 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "publish": "pnpm run build && pnpm run build-prod && aws s3 sync \"dist\" \"s3://wordle-hosting-bucket.com\" & aws cloudfront create-invalidation --distribution-id E28FK575LDIKZC --paths \"/*\""
   },
   "eslintConfig": {
     "extends": [
