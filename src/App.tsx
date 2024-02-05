@@ -97,7 +97,7 @@ export default function App() {
                         <Button variant="solid" onClick={pickWord}>Start</Button>
                     </>
                 }
-                {Boolean(word) && <WordGuesser key={level} inputSize={inputWidth} word={word} maxGuesses={5} isValidWord={word => words.some(x => word.toLowerCase() === x.toLowerCase())} onNextLevel={nextLevel} />}
+                {Boolean(word) && <WordGuesser key={level} inputSize={inputWidth} word={word} maxGuesses={6} isValidWord={word => words.some(x => word.toLowerCase() === x.toLowerCase())} onNextLevel={nextLevel} />}
             </Stack>
         </Box>
     );
