@@ -1,6 +1,7 @@
 import _ from "lodash";
 import axios from "axios";
 import Bimap from "./bimap";
+import LocalStorage from "./LocalStorage";
 import LZUTF8 from "lzutf8";
 import {
     Box,
@@ -24,30 +25,43 @@ import {
 } from "react";
 
 const textToInputRatio = 0.75;
-const sampleSize = 10;
+const sampleSize = 500;
 
 export default function App() {
     const [loading, setLoading] = useState(true);
-    const [words, setWords] = useState<string[]>([]);
     const [wordLength, setWordLength] = useState(5);
     const [word, setWord] = useState("");
     const [inputWidth, setInputWidth] = useState(0);
-    const [level, setLevel] = useState(1);
+    const levelRef = useRef(1);
+    const allWordsRef = useRef<string[]>([]);
     const usedWordsRef = useRef<Set<string>>(new Set());
+
+    const pickWord = useCallback(() => {
+        const candidates = allWordsRef.current.filter(w => w.length === wordLength && !usedWordsRef.current.has(w));
+        const word = _.sample(candidates.splice(0, levelRef.current + sampleSize));
+        if (!word) throw new Error("No word found");
+        setWord(word);
+        console.log(word);
+    }, [wordLength]);
 
     useEffect(() => {
         async function load() {
-            const words = await axios.get("/words-compressed.txt", { responseType: "arraybuffer" });
+            const words = await axios.get(`/words/compressed/words-${wordLength}-compressed.txt`, { responseType: "arraybuffer" });
             const decompressed = await new Promise<string>(resolve => LZUTF8.decompressAsync(Buffer.from(words.data), {}, (result: string, err: any) => {
                 resolve(result);
             }));
-            const allWords = decompressed.split(/\r?\n/).filter(Boolean);
-            setWords(allWords);
+            allWordsRef.current = decompressed.split(/\r?\n/).filter(Boolean);
             setLoading(false);
+
+            const level = LocalStorage.currentLevel;
+            levelRef.current = level;
+            const usedWords = LocalStorage.usedWords;
+            usedWordsRef.current = usedWords;
+            if (level > 1) pickWord();
         }
 
         load();
-    }, []);
+    }, [pickWord, wordLength]);
 
     useEffect(() => {
         function handleResize() {
@@ -59,17 +73,11 @@ export default function App() {
         return () => window.removeEventListener("resize", handleResize);
     }, [wordLength]);
 
-    function pickWord() {
-        const candidates = words.filter(w => w.length === wordLength && !usedWordsRef.current.has(w));
-        const word = _.sample(candidates.splice(0, level + sampleSize));
-        if (!word) throw new Error("No word found");
-        setWord(word);
-        console.log(word);
-    }
-
     function nextLevel() {
         usedWordsRef.current.add(word);
-        setLevel(level + 1);
+        LocalStorage.usedWords = usedWordsRef.current;
+        levelRef.current++;
+        LocalStorage.currentLevel = levelRef.current;
         pickWord();
     }
 
@@ -97,7 +105,7 @@ export default function App() {
                         <Button variant="solid" onClick={pickWord}>Start</Button>
                     </>
                 }
-                {Boolean(word) && <WordGuesser key={level} inputSize={inputWidth} word={word} maxGuesses={6} isValidWord={word => words.some(x => word.toLowerCase() === x.toLowerCase())} onNextLevel={nextLevel} />}
+                {Boolean(word) && <WordGuesser key={levelRef.current} inputSize={inputWidth} word={word} maxGuesses={6} isValidWord={word => allWordsRef.current.some(x => word.toLowerCase() === x.toLowerCase())} onNextLevel={nextLevel} />}
             </Stack>
         </Box>
     );
