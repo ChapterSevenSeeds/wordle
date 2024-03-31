@@ -1,28 +1,21 @@
-import _ from "lodash";
-import axios from "axios";
-import Bimap from "./bimap";
-import LocalStorage from "./LocalStorage";
-import LZUTF8 from "lzutf8";
+import 'react-simple-keyboard/build/css/index.css';
+import './App.css';
+
+import assert from 'assert';
+import axios from 'axios';
+import { Buffer } from 'buffer';
+import _ from 'lodash';
+import LZUTF8 from 'lzutf8';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Keyboard from 'react-simple-keyboard';
+
 import {
-    Box,
-    Button,
-    CircularProgress,
-    colors,
-    FormControl,
-    FormLabel,
-    Input,
-    Stack,
-    Typography,
+    Box, Button, CircularProgress, colors, FormControl, FormLabel, Input, Stack, Typography,
     useTheme
-} from "@mui/joy";
-import { Buffer } from "buffer";
-import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState
-} from "react";
+} from '@mui/joy';
+
+import Bimap from './bimap';
+import LocalStorage from './LocalStorage';
 
 const textToInputRatio = 0.75;
 const sampleSize = 500;
@@ -73,6 +66,8 @@ export default function App() {
         return () => window.removeEventListener("resize", handleResize);
     }, [wordLength]);
 
+    const isValidWord = useCallback((word: string) => allWordsRef.current.some(x => word.toLowerCase() === x.toLowerCase()), []);
+
     function nextLevel() {
         usedWordsRef.current.add(word);
         LocalStorage.usedWords = usedWordsRef.current;
@@ -105,83 +100,61 @@ export default function App() {
                         <Button variant="solid" onClick={pickWord}>Start</Button>
                     </>
                 }
-                {Boolean(word) && <WordGuesser key={levelRef.current} inputSize={inputWidth} word={word} maxGuesses={6} isValidWord={word => allWordsRef.current.some(x => word.toLowerCase() === x.toLowerCase())} onNextLevel={nextLevel} />}
+                {Boolean(word) &&
+                    <WordGuesser key={levelRef.current} inputSize={inputWidth} word={word} maxGuesses={6} isValidWord={isValidWord} onNextLevel={nextLevel} />
+                }
             </Stack>
         </Box>
     );
 }
 
 function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: { word: string, maxGuesses: number, isValidWord: (word: string) => boolean, inputSize: number, onNextLevel: () => void }) {
-    const [guesses, setGuesses] = useState<string[]>(new Array(maxGuesses).fill(""));
+    const [guesses, setGuesses] = useState<string[]>([""]);
     const [currentRow, setCurrentRow] = useState(0);
+    const keyboardRef = useRef<any>(null);
     const theme = useTheme();
-    const inputRefs = useRef<HTMLInputElement[][]>([]);
     const gameStatus = useMemo(() => {
         if (guesses.slice(0, currentRow).some(guess => guess.toLowerCase() === word.toLowerCase())) return "win";
         if (currentRow >= maxGuesses) return "loss";
         return "playing";
     }, [word, guesses, currentRow, maxGuesses]);
 
+    const submitGuess = useCallback(() => {
+        assert(guesses[currentRow].length === word.length && isValidWord(guesses[currentRow]));
+
+        setGuesses([...guesses, ""]);
+        setCurrentRow(currentRow + 1);
+        keyboardRef.current.setInput("");
+    }, [currentRow, guesses, isValidWord, word.length]);
+
+    const onChange = useCallback((event: KeyboardEvent) => {
+        const row = currentRow;
+        const column = guesses[row].length;
+        if (/^[a-z]$/i.test(event.key)) {
+            guesses[row] = (guesses[row] + event.key.toUpperCase()).substring(0, 5);
+            keyboardRef.current.setInput(guesses[row]);
+            setGuesses([...guesses]);
+        } else if (event.key === "Backspace") {
+            guesses[row] = guesses[row].substring(0, column - 1) + guesses[row].substring(column);
+            keyboardRef.current.setInput(guesses[row]);
+            setGuesses([...guesses]);
+        } else if (event.key === "Enter") {
+            if (guesses[row].length === word.length && isValidWord(guesses[row])) {
+                submitGuess();
+            }
+        }
+    }, [currentRow, guesses, isValidWord, submitGuess, word.length]);
+
     useEffect(() => {
-        setGuesses(new Array(maxGuesses).fill(""));
+        document.addEventListener("keydown", onChange);
+
+        return () => document.removeEventListener("keydown", onChange);
+    }, [onChange]);
+
+    useEffect(() => {
+        setGuesses([""]);
         setCurrentRow(0);
     }, [word, maxGuesses]);
-
-    const refCallback = useCallback((input: HTMLInputElement) => {
-        if (!input) return;
-        const lastRow = inputRefs.current[inputRefs.current.length - 1];
-        if (!lastRow || lastRow.length === word.length) {
-            inputRefs.current.push([input]);
-            return;
-        }
-
-        lastRow.push(input);
-    }, [word.length]);
-
-    function onChange(event: React.KeyboardEvent<HTMLDivElement>, row: number, column: number) {
-        if (/^[a-z]$/i.test(event.key)) {
-            const newGuesses = [...guesses];
-            newGuesses[row] = newGuesses[row].substring(0, column) + event.key.toUpperCase() + newGuesses[row].substring(column + 1);
-            setGuesses(newGuesses);
-
-            changeFocus(row, column, "forward");
-        } else if (event.key === "Backspace") {
-            const newGuesses = [...guesses];
-            const previousGuessLength = newGuesses[row].length;
-            newGuesses[row] = newGuesses[row].substring(0, column - (previousGuessLength === word.length ? 0 : 1));
-            setGuesses(newGuesses);
-
-            if (column !== word.length - 1 || previousGuessLength < word.length) {
-                changeFocus(row, column, "backward");
-            }
-        } else if (event.key === "Enter") {
-            submitGuess();
-        }
-    }
-
-    function changeFocus(row: number, column: number, direction: "forward" | "backward" | "explicit") {
-        if (direction === "forward") {
-            if (column < word.length - 1) {
-                inputRefs.current[row][column + 1].focus();
-            }
-        } else if (direction === "backward") {
-            if (column > 0) {
-                inputRefs.current[row][column - 1].focus();
-            }
-        } else if (direction === "explicit") {
-            if (row < maxGuesses && column < word.length) {
-                inputRefs.current[row][column].disabled = false;
-                inputRefs.current[row][column].focus();
-            }
-        }
-    }
-
-    function submitGuess() {
-        if (guesses[currentRow].length === word.length && isValidWord(guesses[currentRow])) {
-            setCurrentRow(currentRow + 1);
-            changeFocus(currentRow + 1, 0, "explicit");
-        }
-    }
 
     function getRowData(word: string, guess: string, row: number) {
         if (row >= currentRow) return new Array(word.length).fill("").map((_, i) => ({ letter: guess[i] ?? "", color: row === currentRow && guess.length === word.length && isValidWord(guess) ? colors.grey[500] : colors.grey[700], index: i }));
@@ -220,6 +193,12 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
         });
     }
 
+    function onTextChange(text: string) {
+        text = text.substring(0, 5);
+        keyboardRef.current.setInput(text);
+        setGuesses([...guesses.slice(0, currentRow), text, ...guesses.slice(currentRow + 1)]);
+    }
+
     return (
         <Stack direction="column" spacing={1}>
             {guesses.map((guess, row) => (
@@ -227,10 +206,8 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
                     {Array.from(getRowData(word, guess, row)).map(({ letter, color }, column) => {
                         const readonly = row > currentRow || gameStatus !== "playing";
                         return (
-                            <input
-                                ref={refCallback}
+                            <div
                                 key={column}
-                                value={letter}
                                 className="letter"
                                 style={{
                                     width: `${inputSize}px`,
@@ -245,9 +222,9 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
                                     filter: row > currentRow || (gameStatus !== "playing" && row > currentRow - 1) ? "opacity(0)" : "opacity(1)",
                                     display: gameStatus !== "playing" && row > currentRow - 1 ? "none" : "block"
                                 }}
-                                onKeyDown={e => onChange(e, row, column)}
-                                disabled={readonly}
-                            />
+                            >
+                                {letter}
+                            </div>
                         );
                     })}
                 </Stack>
@@ -259,6 +236,29 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
                 <Typography fontSize="20px" variant="plain" color="success">You won!</Typography>
             }
             {gameStatus !== "playing" && <Button onClick={onNextLevel}>Next Level</Button>}
+            {gameStatus === "playing" &&
+                <>
+                    {guesses[currentRow].length === word.length && !isValidWord(guesses[currentRow]) && <Typography fontSize="20px" variant="plain" color="danger">Not a valid word</Typography>}
+                    {guesses[currentRow].length < word.length && <Typography fontSize="20px" variant="plain" color="warning">Enter a {word.length}-letter word</Typography>}
+                    {guesses[currentRow].length === word.length && isValidWord(guesses[currentRow]) && <Button onClick={submitGuess}>Submit</Button>}
+                    <Keyboard
+                        layoutName="default"
+                        layout={{
+                            default: [
+                                "Q W E R T Y U I O P",
+                                "A S D F G H J K L",
+                                "Z X C V B N M {backspace}",
+                            ]
+                        }}
+                        display={{
+                            "{backspace}": "⌫",
+                        }}
+                        theme="hg-theme-default myTheme1"
+                        keyboardRef={r => keyboardRef.current = r}
+                        onChange={onTextChange}
+                    />
+                </>
+            }
         </Stack>
     );
 }
