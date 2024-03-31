@@ -121,13 +121,16 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
 
     const submitGuess = useCallback(() => {
         assert(guesses[currentRow].length === word.length && isValidWord(guesses[currentRow]));
-
-        setGuesses([...guesses, ""]);
-        setCurrentRow(currentRow + 1);
         keyboardRef.current.setInput("");
-    }, [currentRow, guesses, isValidWord, word.length]);
+
+        setCurrentRow(currentRow + 1);
+        if (currentRow >= maxGuesses - 1 || guesses.some(x => x.toLowerCase() === word.toLowerCase())) return;
+        setGuesses([...guesses, ""]);
+    }, [currentRow, guesses, isValidWord, maxGuesses, word.length]);
 
     const onChange = useCallback((event: KeyboardEvent) => {
+        if (gameStatus !== "playing") return;
+
         const row = currentRow;
         const column = guesses[row].length;
         if (/^[a-z]$/i.test(event.key)) {
@@ -143,7 +146,7 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
                 submitGuess();
             }
         }
-    }, [currentRow, guesses, isValidWord, submitGuess, word.length]);
+    }, [currentRow, gameStatus, guesses, isValidWord, submitGuess, word.length]);
 
     useEffect(() => {
         document.addEventListener("keydown", onChange);
@@ -193,6 +196,25 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
         });
     }
 
+    function getKeyboardStyles() {
+        const keyStyles: { "key-success": Set<string>, "key-warning": Set<string> } = {
+            "key-success": new Set<string>(),
+            "key-warning": new Set<string>()
+        };
+        for (const guess of guesses.slice(0, currentRow)) {
+            for (let i = 0; i < guess.length; i++) {
+                if (guess[i].toLowerCase() === word[i].toLowerCase()) {
+                    keyStyles["key-success"].add(guess[i].toUpperCase());
+                    if (keyStyles["key-warning"].has(guess[i].toUpperCase())) keyStyles["key-warning"].delete(guess[i].toUpperCase());
+                } else if (word.includes(guess[i].toLowerCase()) && !keyStyles["key-success"].has(guess[i])) {
+                    keyStyles["key-warning"].add(guess[i].toUpperCase());
+                }
+            }
+        }
+
+        return Object.entries(keyStyles).filter(x => x[1].size > 0).map(([className, keys]) => ({ class: className, buttons: Array.from(keys).join(" ") }));
+    }
+
     function onTextChange(text: string) {
         text = text.substring(0, 5);
         keyboardRef.current.setInput(text);
@@ -204,7 +226,6 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
             {guesses.map((guess, row) => (
                 <Stack key={row} direction="row" spacing={1}>
                     {Array.from(getRowData(word, guess, row)).map(({ letter, color }, column) => {
-                        const readonly = row > currentRow || gameStatus !== "playing";
                         return (
                             <div
                                 key={column}
@@ -219,8 +240,6 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
                                     fontSize: `${inputSize * textToInputRatio}px`,
                                     textAlign: "center",
                                     backgroundColor: color,
-                                    filter: row > currentRow || (gameStatus !== "playing" && row > currentRow - 1) ? "opacity(0)" : "opacity(1)",
-                                    display: gameStatus !== "playing" && row > currentRow - 1 ? "none" : "block"
                                 }}
                             >
                                 {letter}
@@ -256,6 +275,7 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
                         theme="hg-theme-default myTheme1"
                         keyboardRef={r => keyboardRef.current = r}
                         onChange={onTextChange}
+                        buttonTheme={getKeyboardStyles()}
                     />
                 </>
             }

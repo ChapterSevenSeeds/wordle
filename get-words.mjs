@@ -6,9 +6,12 @@ const words = (await fs.readFile("./unigram_freq.csv", "utf-8")).toString().spli
 
 for (let i = 0; i < _.maxBy(words, x => x.length).length; i++) {
     const ofLength = words.filter(x => x.length === i);
+    const ofLengthWithoutRepeatedLetters = ofLength.filter(x => _.uniq(x).length === x.length);
     if (ofLength.length > 0) {
         await fs.writeFile(`public/words/originals/words-${i}.txt`, ofLength.join("\n"));
         await fs.writeFile(`public/words/compressed/words-${i}-compressed.txt`, LZUTF8.compress(ofLength.join("\n")));
+        await fs.writeFile(`public/words/originals/words-${i}-unique.txt`, ofLengthWithoutRepeatedLetters.join("\n"));
+        await fs.writeFile(`public/words/compressed/words-${i}-unique-compressed.txt`, LZUTF8.compress(ofLengthWithoutRepeatedLetters.join("\n")));
     }
 }
 

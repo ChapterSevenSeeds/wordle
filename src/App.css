@@ -22,3 +22,13 @@
 #root .simple-keyboard.myTheme1+.simple-keyboard-preview {
     background: #1c4995;
 }
+
+.simple-keyboard.hg-layout-default .hg-button.key-success {
+    background: green;
+    color: white;
+}
+
+.simple-keyboard.hg-layout-default .hg-button.key-warning {
+    background: rgb(154, 91, 19);
+    color: white;
+}
