@@ -221,7 +221,7 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
                     if (keyStyles["key-warning"].has(guess[i].toUpperCase())) keyStyles["key-warning"].delete(guess[i].toUpperCase());
                 } else if (word.includes(guess[i].toLowerCase()) && !keyStyles["key-success"].has(guess[i])) {
                     keyStyles["key-warning"].add(guess[i].toUpperCase());
-                } else if (!keyStyles["key-warning"].has(guess[i].toUpperCase())) {
+                } else if (!word.includes(guess[i].toLowerCase()) && !keyStyles["key-warning"].has(guess[i].toUpperCase()) && !keyStyles["key-success"].has(guess[i].toUpperCase())) {
                     keyStyles["key-disabled"].add(guess[i].toUpperCase());
                 }
             }
