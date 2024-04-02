@@ -32,3 +32,8 @@
     background: rgb(154, 91, 19);
     color: white;
 }
+
+.simple-keyboard.hg-layout-default .hg-button.key-disabled {
+    background: rgb(159, 1, 1);
+    color: white;
+}

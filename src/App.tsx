@@ -20,6 +20,12 @@ import LocalStorage from './LocalStorage';
 const textToInputRatio = 0.75;
 const sampleSize = 500;
 
+async function decompress(buffer: Buffer) {
+    return await new Promise<string>(resolve => LZUTF8.decompressAsync(Buffer.from(buffer), {}, (result: string, err: any) => {
+        resolve(result);
+    }));
+}
+
 export default function App() {
     const [loading, setLoading] = useState(true);
     const [wordLength, setWordLength] = useState(5);
@@ -27,23 +33,29 @@ export default function App() {
     const [inputWidth, setInputWidth] = useState(0);
     const levelRef = useRef(1);
     const allWordsRef = useRef<string[]>([]);
+    const wordsToPickFromRef = useRef<string[]>([]);
     const usedWordsRef = useRef<Set<string>>(new Set());
 
     const pickWord = useCallback(() => {
-        const candidates = allWordsRef.current.filter(w => w.length === wordLength && !usedWordsRef.current.has(w));
+        const candidates = wordsToPickFromRef.current.filter(w => !usedWordsRef.current.has(w));
         const word = _.sample(candidates.splice(0, levelRef.current + sampleSize));
         if (!word) throw new Error("No word found");
         setWord(word);
         console.log(word);
-    }, [wordLength]);
+    }, []);
 
     useEffect(() => {
         async function load() {
-            const words = await axios.get(`/words/compressed/words-${wordLength}-compressed.txt`, { responseType: "arraybuffer" });
-            const decompressed = await new Promise<string>(resolve => LZUTF8.decompressAsync(Buffer.from(words.data), {}, (result: string, err: any) => {
-                resolve(result);
-            }));
-            allWordsRef.current = decompressed.split(/\r?\n/).filter(Boolean);
+            const [wordsToPickFrom, allWords] = await Promise.all([
+                axios.get(`/words/compressed/words-${wordLength}-unique-compressed.txt`, { responseType: "arraybuffer" }),
+                axios.get(`/words/compressed/words-${wordLength}-compressed.txt`, { responseType: "arraybuffer" })
+            ]);
+            const [wordsToPickFromDecompressed, allWordsDecompressed] = await Promise.all([
+                decompress(wordsToPickFrom.data),
+                decompress(allWords.data)
+            ]);
+            wordsToPickFromRef.current = wordsToPickFromDecompressed.split(/\r?\n/).filter(Boolean);
+            allWordsRef.current = allWordsDecompressed.split(/\r?\n/).filter(Boolean);
             setLoading(false);
 
             const level = LocalStorage.currentLevel;
@@ -126,7 +138,7 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
         setCurrentRow(currentRow + 1);
         if (currentRow >= maxGuesses - 1 || guesses.some(x => x.toLowerCase() === word.toLowerCase())) return;
         setGuesses([...guesses, ""]);
-    }, [currentRow, guesses, isValidWord, maxGuesses, word.length]);
+    }, [currentRow, guesses, isValidWord, maxGuesses, word]);
 
     const onChange = useCallback((event: KeyboardEvent) => {
         if (gameStatus !== "playing") return;
@@ -197,9 +209,10 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
     }
 
     function getKeyboardStyles() {
-        const keyStyles: { "key-success": Set<string>, "key-warning": Set<string> } = {
+        const keyStyles: { "key-success": Set<string>, "key-warning": Set<string>, "key-disabled": Set<string> } = {
             "key-success": new Set<string>(),
-            "key-warning": new Set<string>()
+            "key-warning": new Set<string>(),
+            "key-disabled": new Set<string>()
         };
         for (const guess of guesses.slice(0, currentRow)) {
             for (let i = 0; i < guess.length; i++) {
@@ -208,6 +221,8 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
                     if (keyStyles["key-warning"].has(guess[i].toUpperCase())) keyStyles["key-warning"].delete(guess[i].toUpperCase());
                 } else if (word.includes(guess[i].toLowerCase()) && !keyStyles["key-success"].has(guess[i])) {
                     keyStyles["key-warning"].add(guess[i].toUpperCase());
+                } else if (!keyStyles["key-warning"].has(guess[i].toUpperCase())) {
+                    keyStyles["key-disabled"].add(guess[i].toUpperCase());
                 }
             }
         }
