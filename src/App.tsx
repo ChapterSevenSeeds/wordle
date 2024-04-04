@@ -26,6 +26,22 @@ async function decompress(buffer: Buffer) {
     }));
 }
 
+const allowedGuessesByWordLength: Record<number, number> = {
+    1: 19,
+    2: 15,
+    3: 11,
+    4: 8,
+    5: 6,
+    6: 5,
+    7: 5,
+    8: 4,
+    9: 4,
+    10: 3,
+    11: 3,
+    12: 3,
+    13: 3
+}
+
 export default function App() {
     const [loading, setLoading] = useState(true);
     const [wordLength, setWordLength] = useState(5);
@@ -101,7 +117,7 @@ export default function App() {
                                 slotProps={{
                                     input: {
                                         min: 1,
-                                        max: 30,
+                                        max: 13,
                                         step: 1
                                     }
                                 }}
@@ -113,7 +129,7 @@ export default function App() {
                     </>
                 }
                 {Boolean(word) &&
-                    <WordGuesser key={levelRef.current} inputSize={inputWidth} word={word} maxGuesses={6} isValidWord={isValidWord} onNextLevel={nextLevel} />
+                    <WordGuesser key={levelRef.current} inputSize={inputWidth} word={word} maxGuesses={allowedGuessesByWordLength[word.length]} isValidWord={isValidWord} onNextLevel={nextLevel} />
                 }
             </Stack>
         </Box>
@@ -146,7 +162,7 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
         const row = currentRow;
         const column = guesses[row].length;
         if (/^[a-z]$/i.test(event.key)) {
-            guesses[row] = (guesses[row] + event.key.toUpperCase()).substring(0, 5);
+            guesses[row] = (guesses[row] + event.key.toUpperCase()).substring(0, word.length);
             keyboardRef.current.setInput(guesses[row]);
             setGuesses([...guesses]);
         } else if (event.key === "Backspace") {
@@ -231,7 +247,7 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
     }
 
     function onTextChange(text: string) {
-        text = text.substring(0, 5);
+        text = text.substring(0, word.length);
         keyboardRef.current.setInput(text);
         setGuesses([...guesses.slice(0, currentRow), text, ...guesses.slice(currentRow + 1)]);
     }
