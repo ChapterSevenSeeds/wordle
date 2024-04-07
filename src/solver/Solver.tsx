@@ -149,7 +149,7 @@ export default function Solver() {
                 <Add />
             </IconButton>
             <Box sx={{ maxHeight: "600px", overflow: "scroll", padding: theme => theme.spacing(2) }}>
-                {candidates.slice(0, 100).map(candidate => <div>{candidate}</div>)}
+                {candidates.slice(0, 100).map(candidate => <div key={candidate}>{candidate}</div>)}
             </Box>
         </Stack>
     );
