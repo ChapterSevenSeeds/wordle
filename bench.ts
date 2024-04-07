@@ -1,13 +1,6 @@
 import fs from 'fs/promises';
 import _ from 'lodash';
 
-type Summary = {
-    fixed: { letter: string, index: number }[],
-    requiredLetters: string[],
-    indexExclusions: { letters: string[], index: number }[],
-    notInWord: string[]
-};
-
 const wordsCache: Record<number, string[]> = {};
 
 async function getWords(length: number) {
@@ -15,17 +8,6 @@ async function getWords(length: number) {
     const words = (await fs.readFile(`./public/words/originals/words-${length}-unique.txt`, "utf-8")).split(/\r?\n/).filter(Boolean);
     wordsCache[length] = words;
     return words;
-}
-
-async function getCandidates(length: number, summary: Summary) {
-    const words = await getWords(length);
-
-    const wordsWithRequiredLetters = words.filter(candidateWord => summary.requiredLetters.every(letter => candidateWord.includes(letter)));
-    const wordsWithFixedLetters = wordsWithRequiredLetters.filter(candidateWord => summary.fixed.every(fixed => candidateWord[fixed.index] === fixed.letter));
-    const wordsWithIndexExclusions = wordsWithFixedLetters.filter(candidateWord => summary.indexExclusions.every(exclusion => !exclusion.letters.includes(candidateWord[exclusion.index])));
-    const wordsWithExcludedLettersRemoved = wordsWithIndexExclusions.filter(candidateWord => summary.notInWord.every(character => !candidateWord.includes(character)));
-
-    return wordsWithExcludedLettersRemoved;
 }
 
 function submitGuess(word: string, guess: string, previousSummary?: Summary | undefined): Summary | "win" {

@@ -3,9 +3,7 @@ import './App.css';
 
 import assert from 'assert';
 import axios from 'axios';
-import { Buffer } from 'buffer';
 import _ from 'lodash';
-import LZUTF8 from 'lzutf8';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Keyboard from 'react-simple-keyboard';
 
@@ -16,15 +14,10 @@ import {
 
 import Bimap from './bimap';
 import LocalStorage from './LocalStorage';
+import { decompress, withLength } from './utils';
 
 const textToInputRatio = 0.75;
 const sampleSize = 500;
-
-async function decompress(buffer: Buffer) {
-    return await new Promise<string>(resolve => LZUTF8.decompressAsync(Buffer.from(buffer), {}, (result: string, err: any) => {
-        resolve(result);
-    }));
-}
 
 const allowedGuessesByWordLength: Record<number, number> = {
     1: 19,
@@ -190,7 +183,7 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
     function getRowData(word: string, guess: string, row: number) {
         if (row >= currentRow) return new Array(word.length).fill("").map((_, i) => ({ letter: guess[i] ?? "", color: row === currentRow && guess.length === word.length && isValidWord(guess) ? colors.grey[500] : colors.grey[700], index: i }));
 
-        const fullGuess = Array.from(withLength(guess, word.length));
+        const fullGuess = Array.from(withLength(Array.from(guess), word.length, ""));
         const wordArray = Array.from(word);
         const guessLetterIndexToWordLetterIndexMapping = new Bimap<number, number>();
         for (const [guessIndex, mapsToWordIndex] of fullGuess.map((_, i) => [i, -1])) {
@@ -312,17 +305,4 @@ function WordGuesser({ word, maxGuesses, isValidWord, inputSize, onNextLevel }: 
             }
         </Stack>
     );
-}
-
-function* withLength(str: string, length: number) {
-    let i = 0;
-    while (i < length && i < str.length) {
-        yield str[i];
-        i++;
-    }
-
-    while (i < length) {
-        yield "";
-        i++;
-    }
 }
